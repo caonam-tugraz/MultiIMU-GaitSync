@@ -60,6 +60,8 @@ Open-source firmware and PC tools for a wireless multi-IMU system built on ESP32
 - Master TFT variant: ST7789 display + Adafruit GFX/ST7789 libraries
 - USB cable from Master to PC
 
+## https://oshwlab.com/caonam/project_eewoafwc
+ 
 **Software**
 
 - [Arduino IDE](https://www.arduino.cc/en/software) 2.x (or PlatformIO) with ESP32 board support
