@@ -132,6 +132,3 @@ python imu_calib.py COM18 921600
 3. Run `imu_logger_gui.py` → live check → record CSV during experiment.
 4. Plot and analyze CSV from the GUI or export for external tools.
 
-## License
-
-Add your license file before publishing (e.g. MIT, Apache-2.0).
