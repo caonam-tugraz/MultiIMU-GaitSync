@@ -149,6 +149,11 @@ python imu_calib.py COM18 921600
 3. Follow the 6-face procedure (+X, −X, +Y, −Y, +Z, −Z); keep the module still on each face.
 4. Review computed bias/scale, then **Send Calib To Module** to apply on the slave via Master.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/main/Screenshot%202026-05-27%20125333.jpg" width="80%" alt="IMU Calibration Tool GUI" />
+  <br /><em>IMU Calibration — MAC selection, live data, 6-point calib, T-gyro fit, send calib to module</em>
+</p>
+
 ### Typical workflow
 
 1. Flash Master + Slaves → verify ESP-NOW link on Master.
