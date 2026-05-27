@@ -121,6 +121,16 @@ python imu_logger_gui.py
 3. **Record** — saves `imu_log_*.csv` and optional `vl53_log_*.csv` under a `recorded/` folder next to the script.
 4. **Plot CSV** tab — open and plot saved IMU logs; optional gap markers for missing samples.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/main/Screenshot%202026-05-27%20124552.jpg" width="50%" alt="IMU Logger GUI — Live IMU tab" />
+  <br /><em>Live IMU — real-time accel, gyro, and |a| plots for multiple slaves</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/main/Screenshot%202026-05-27%20124622.jpg" width="50%" alt="IMU Logger GUI — Serial logger tab" />
+  <br /><em>Serial logger — COM connect, log, GAP detection, per-MAC stats (battery, RSSI)</em>
+</p>
+
 ### IMU Calibration
 
 ```bash
