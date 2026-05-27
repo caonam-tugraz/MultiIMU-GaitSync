@@ -2,6 +2,16 @@
 
 Open-source firmware and PC tools for a wireless multi-IMU system built on ESP32. A **Master** node collects time-synchronized IMU data from multiple **Slave** nodes over ESP-NOW and streams it to a PC over USB Serial. Python applications provide live monitoring, CSV logging, post-processing plots, and accelerometer/gyro calibration.
 
+## Hardware overview
+
+Custom carrier PCB with ESP32 module (CAD):
+
+![ESP32 carrier PCB — 3D render](https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/main/3D.png)
+
+Five IMU slave nodes and Master with TFT (5/5 nodes connected):
+
+![Five IMU nodes and Master recorder](https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/main/ss.png)
+
 ## Programs included
 
 ### Python applications
@@ -60,8 +70,6 @@ Open-source firmware and PC tools for a wireless multi-IMU system built on ESP32
 - Master TFT variant: ST7789 display + Adafruit GFX/ST7789 libraries
 - USB cable from Master to PC
 
-## https://oshwlab.com/caonam/project_eewoafwc
- 
 **Software**
 
 - [Arduino IDE](https://www.arduino.cc/en/software) 2.x (or PlatformIO) with ESP32 board support
@@ -134,3 +142,6 @@ python imu_calib.py COM18 921600
 3. Run `imu_logger_gui.py` → live check → record CSV during experiment.
 4. Plot and analyze CSV from the GUI or export for external tools.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
