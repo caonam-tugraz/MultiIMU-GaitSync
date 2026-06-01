@@ -93,6 +93,60 @@ POSES = [
     "-Z (Z axis down)",
 ]
 
+# Spirit-level widget: ball offset from two secondary accel axes (m/s² → pixels).
+BUBBLE_LEVEL_CANVAS_PX = 200
+BUBBLE_BALL_RADIUS_PX = 10
+BUBBLE_OUTER_RING_RADIUS_PX = 74
+BUBBLE_CENTER_MARK_PX = 14
+# Ring radii map to tilt (m/s²): inner=OK, mid=warn, outer=large (ball can travel to outer).
+BUBBLE_OK_TILT_MS2 = POSE_MAX_SECONDARY_ABS_MS2
+BUBBLE_WARN_TILT_MS2 = max(POSE_MAX_SECONDARY_ABS_MS2 * 1.5, 0.30)
+BUBBLE_OUTER_TILT_MS2 = 0.75
+# EMA on secondary-axis tilt (0..1): lower = smoother ball, slower response.
+BUBBLE_SMOOTH_ALPHA = 0.07
+
+
+def parse_pose_axis_sign(pose_str):
+    """'+X (X axis up)' → ('X', +1) or (None, None)."""
+    if not pose_str or len(pose_str) < 2:
+        return None, None
+    if pose_str[0] == "+":
+        sign = 1
+    elif pose_str[0] == "-":
+        sign = -1
+    else:
+        return None, None
+    axis = pose_str[1].upper()
+    if axis not in ("X", "Y", "Z"):
+        return None, None
+    return axis, sign
+
+
+def infer_up_axis_sign_from_accel(ax, ay, az):
+    """Dominant gravity axis for auto spirit-level (same idea as rough pose text)."""
+    axes = {"X": float(ax), "Y": float(ay), "Z": float(az)}
+    acc_norm = math.sqrt(ax * ax + ay * ay + az * az)
+    if acc_norm < 0.5:
+        return None, None
+    dominant_axis = max(axes, key=lambda k: abs(axes[k]))
+    dominant_value = axes[dominant_axis]
+    dominant_abs = abs(dominant_value)
+    other_values = [abs(value) for key, value in axes.items() if key != dominant_axis]
+    second_abs = max(other_values) if other_values else 0.0
+    if dominant_abs < 0.75 * acc_norm:
+        return None, None
+    if second_abs > 0.45 * dominant_abs:
+        return None, None
+    sign = 1 if dominant_value >= 0 else -1
+    return dominant_axis, sign
+
+
+def secondary_tilt_for_level(ax, ay, az, up_axis):
+    """Tilt in the plane ⊥ gravity when `up_axis` points up/down (m/s²)."""
+    vec = {"X": float(ax), "Y": float(ay), "Z": float(az)}
+    h_name, v_name = {"X": ("Y", "Z"), "Y": ("X", "Z"), "Z": ("X", "Y")}[up_axis]
+    return vec[h_name], vec[v_name], h_name, v_name
+
 
 def trailing_moving_average(seq, window):
     """Trailing mean over `window` samples (through current index); same length as seq."""
@@ -218,6 +272,7 @@ class IMUCalibApp:
         self.validation_results = []
         self.pose_index = 0
         self.capture_deadline = 0.0
+        self.bubble_target_pose = None
         self.capture_start_micros = None
         self.capture_first_sample_micros = None
         self.capture_last_sample_micros = None
@@ -421,15 +476,20 @@ class IMUCalibApp:
 
         live = ttk.LabelFrame(right, text="Live IMU data", padding=8)
         live.pack(fill="x", pady=(10, 0))
-        ttk.Label(live, textvariable=self.live_var, justify="left").pack(anchor="w")
+        live_row = ttk.Frame(live)
+        live_row.pack(fill="x")
+        live_text = ttk.Frame(live_row)
+        live_text.pack(side="left", fill="both", expand=True)
+        ttk.Label(live_text, textvariable=self.live_var, justify="left").pack(anchor="w")
         self.orientation_label = tk.Label(
-            live,
+            live_text,
             textvariable=self.orientation_var,
             justify="left",
             fg="red",
             font=("TkDefaultFont", 12, "bold"),
         )
         self.orientation_label.pack(anchor="w", pady=(6, 0))
+        self._build_bubble_level(live_row)
 
         corrected = ttk.LabelFrame(right, text="Accel after calib", padding=8)
         corrected.pack(fill="x", pady=(10, 0))
@@ -516,6 +576,225 @@ class IMUCalibApp:
         log_frame.pack(fill="both", expand=True, pady=(10, 0))
         self.text = tk.Text(log_frame, height=18, width=72)
         self.text.pack(fill="both", expand=True)
+
+    def _build_bubble_level(self, parent):
+        """Spirit level: ball moves toward the tilted side (secondary accel axes)."""
+        wrap = ttk.Frame(parent)
+        wrap.pack(side="right", padx=(8, 0))
+        self.bubble_pose_var = tk.StringVar(value="Level: —")
+        ttk.Label(
+            wrap,
+            textvariable=self.bubble_pose_var,
+            font=("TkDefaultFont", 9),
+            justify="center",
+        ).pack()
+        ttk.Label(
+            wrap,
+            text="Rings: green=OK · orange=warn · dashed=large tilt",
+            font=("TkDefaultFont", 8),
+        ).pack()
+        size = BUBBLE_LEVEL_CANVAS_PX
+        self.bubble_canvas = tk.Canvas(
+            wrap,
+            width=size,
+            height=size,
+            highlightthickness=1,
+            highlightbackground="#888",
+            bg="#f5f5f0",
+        )
+        self.bubble_canvas.pack()
+        cx = cy = size // 2
+        outer_r = BUBBLE_OUTER_RING_RADIUS_PX
+        self._bubble_cx = cx
+        self._bubble_cy = cy
+        self._bubble_outer_r = outer_r
+        self._bubble_px_per_ms2 = outer_r / BUBBLE_OUTER_TILT_MS2
+
+        def ring_px(tilt_ms2):
+            return tilt_ms2 * self._bubble_px_per_ms2
+
+        r_outer = ring_px(BUBBLE_OUTER_TILT_MS2)
+        r_warn = ring_px(BUBBLE_WARN_TILT_MS2)
+        r_ok = ring_px(BUBBLE_OK_TILT_MS2)
+        # Large-tilt guide (outer) — ball may sit here when badly misaligned.
+        self.bubble_canvas.create_oval(
+            cx - r_outer,
+            cy - r_outer,
+            cx + r_outer,
+            cy + r_outer,
+            outline="#c62828",
+            width=2,
+            dash=(5, 4),
+            tags="static",
+        )
+        self.bubble_canvas.create_oval(
+            cx - r_warn,
+            cy - r_warn,
+            cx + r_warn,
+            cy + r_warn,
+            outline="#ef6c00",
+            width=2,
+            tags="static",
+        )
+        self.bubble_canvas.create_oval(
+            cx - r_ok,
+            cy - r_ok,
+            cx + r_ok,
+            cy + r_ok,
+            outline="#558b2f",
+            width=2,
+            tags="static",
+        )
+        self.bubble_canvas.create_line(
+            cx - r_outer, cy, cx + r_outer, cy, fill="#ccc", tags="static"
+        )
+        self.bubble_canvas.create_line(
+            cx, cy - r_outer, cx, cy + r_outer, fill="#ccc", tags="static"
+        )
+        tr = BUBBLE_CENTER_MARK_PX
+        self.bubble_canvas.create_oval(
+            cx - tr,
+            cy - tr,
+            cx + tr,
+            cy + tr,
+            outline="#33691e",
+            width=2,
+            tags="static",
+        )
+        self._bubble_label_items = []
+        br = BUBBLE_BALL_RADIUS_PX
+        self.bubble_ball = self.bubble_canvas.create_oval(
+            cx - br, cy - br, cx + br, cy + br, fill="#9e9e9e", outline="#424242", width=1
+        )
+        self.bubble_tilt_text = self.bubble_canvas.create_text(
+            cx,
+            size - 18,
+            text="",
+            font=("TkDefaultFont", 8),
+            justify="center",
+        )
+        self._bubble_smooth_axis = None
+        self._bubble_smooth = None
+
+    def _reset_bubble_smooth(self):
+        self._bubble_smooth_axis = None
+        self._bubble_smooth = None
+
+    def _smooth_bubble_tilt(self, up_axis, tilt_h, tilt_v):
+        """Exponential moving average on tilt in the level plane (per up-axis)."""
+        if self._bubble_smooth_axis != up_axis or self._bubble_smooth is None:
+            self._bubble_smooth_axis = up_axis
+            self._bubble_smooth = (float(tilt_h), float(tilt_v))
+            return self._bubble_smooth
+
+        sh, sv = self._bubble_smooth
+        a = BUBBLE_SMOOTH_ALPHA
+        sh = a * float(tilt_h) + (1.0 - a) * sh
+        sv = a * float(tilt_v) + (1.0 - a) * sv
+        self._bubble_smooth = (sh, sv)
+        return sh, sv
+
+    def _bubble_correction_hint(self, tilt_h, tilt_v, h_name, v_name, smooth_max):
+        """Which axis to tilt toward so the ball moves to center."""
+        if smooth_max <= POSE_MAX_SECONDARY_ABS_MS2 * 0.45:
+            return ""
+        parts = []
+        thresh = 0.025
+        if abs(tilt_h) > thresh:
+            parts.append(f"{'−' if tilt_h > 0 else '+'}{h_name}")
+        if abs(tilt_v) > thresh:
+            parts.append(f"{'−' if tilt_v > 0 else '+'}{v_name}")
+        if not parts:
+            return ""
+        return "Tilt toward: " + ", ".join(parts)
+
+    def _update_bubble_axis_labels(self, h_name, v_name):
+        for item in self._bubble_label_items:
+            self.bubble_canvas.delete(item)
+        self._bubble_label_items = []
+        cx, cy, r = self._bubble_cx, self._bubble_cy, self._bubble_outer_r
+        font = ("TkDefaultFont", 8, "bold")
+        pad = 12
+        self._bubble_label_items.append(
+            self.bubble_canvas.create_text(
+                cx + r - pad, cy, text=f"+{h_name}", font=font, fill="#333"
+            )
+        )
+        self._bubble_label_items.append(
+            self.bubble_canvas.create_text(
+                cx - r + pad, cy, text=f"−{h_name}", font=font, fill="#333"
+            )
+        )
+        self._bubble_label_items.append(
+            self.bubble_canvas.create_text(
+                cx, cy - r + pad, text=f"−{v_name}", font=font, fill="#333"
+            )
+        )
+        self._bubble_label_items.append(
+            self.bubble_canvas.create_text(
+                cx, cy + r - pad, text=f"+{v_name}", font=font, fill="#333"
+            )
+        )
+
+    def _place_bubble_ball(self, tilt_h, tilt_v, fill):
+        """Place ball from secondary-axis tilts (m/s²); clamp inside outer ring."""
+        ox = tilt_h * self._bubble_px_per_ms2
+        oy = tilt_v * self._bubble_px_per_ms2
+        max_dist = self._bubble_outer_r - BUBBLE_BALL_RADIUS_PX - 2
+        dist = math.hypot(ox, oy)
+        if dist > max_dist and dist > 0:
+            ox *= max_dist / dist
+            oy *= max_dist / dist
+        bx = self._bubble_cx + ox
+        by = self._bubble_cy + oy
+        br = BUBBLE_BALL_RADIUS_PX
+        self.bubble_canvas.coords(self.bubble_ball, bx - br, by - br, bx + br, by + br)
+        self.bubble_canvas.itemconfig(self.bubble_ball, fill=fill)
+
+    def update_bubble_level(self, ax, ay, az):
+        if not hasattr(self, "bubble_canvas"):
+            return
+
+        pose_hint = self.capture_target or self.bubble_target_pose
+        if pose_hint:
+            up_axis, _up_sign = parse_pose_axis_sign(pose_hint)
+            short = pose_hint.split("(", 1)[0].strip()
+            self.bubble_pose_var.set(f"Target face: {short}")
+        else:
+            up_axis, up_sign = infer_up_axis_sign_from_accel(ax, ay, az)
+            if up_axis is not None:
+                sign_ch = "+" if up_sign > 0 else "−"
+                self.bubble_pose_var.set(f"Auto face: {sign_ch}{up_axis}")
+            else:
+                self.bubble_pose_var.set("Level: need |acc| ≈ g on one axis")
+
+        if up_axis is None:
+            self._reset_bubble_smooth()
+            self._place_bubble_ball(0.0, 0.0, "#bdbdbd")
+            self.bubble_canvas.itemconfig(self.bubble_tilt_text, text="")
+            for item in self._bubble_label_items:
+                self.bubble_canvas.delete(item)
+            self._bubble_label_items = []
+            return
+
+        tilt_h, tilt_v, h_name, v_name = secondary_tilt_for_level(ax, ay, az, up_axis)
+        max_tilt = max(abs(tilt_h), abs(tilt_v))
+        smooth_h, smooth_v = self._smooth_bubble_tilt(up_axis, tilt_h, tilt_v)
+        smooth_max = max(abs(smooth_h), abs(smooth_v))
+        if smooth_max <= POSE_MAX_SECONDARY_ABS_MS2:
+            color = "#43a047"
+        elif smooth_max <= POSE_MAX_SECONDARY_ABS_MS2 * 1.5:
+            color = "#fb8c00"
+        else:
+            color = "#e53935"
+        self._place_bubble_ball(smooth_h, smooth_v, color)
+        self._update_bubble_axis_labels(h_name, v_name)
+        ok_mark = "OK" if max_tilt <= POSE_MAX_SECONDARY_ABS_MS2 else "tilt"
+        status = f"{ok_mark} max|2⊥|={max_tilt:.3f} (≤{POSE_MAX_SECONDARY_ABS_MS2})"
+        hint = self._bubble_correction_hint(smooth_h, smooth_v, h_name, v_name, smooth_max)
+        if hint:
+            status += f"\n{hint}"
+        self.bubble_canvas.itemconfig(self.bubble_tilt_text, text=status, fill=color)
 
     def log(self, msg):
         stamp = time.strftime("%H:%M:%S")
@@ -930,6 +1209,7 @@ class IMUCalibApp:
         ori_text, ori_fg = self.estimate_orientation_text(row, acc_norm)
         self.orientation_var.set(ori_text)
         self.orientation_label.config(fg=ori_fg)
+        self.update_bubble_level(row["ax"], row["ay"], row["az"])
 
         if self.bias is not None and self.scale is not None and self.latest_corrected is not None:
             corrected = self.latest_corrected
@@ -1281,12 +1561,14 @@ class IMUCalibApp:
             finally:
                 self.capture_mode = None
                 self.capture_target = None
+                self.bubble_target_pose = None
                 self.capture_samples = []
                 self.capture_gyro_batch = []
                 self.calibration_running = False
             return
 
         pose = POSES[self.pose_index]
+        self.bubble_target_pose = pose
         mode_label = "calib" if self.capture_mode == "calibration" else "validation"
         messagebox.showinfo(
             "Place IMU pose",
@@ -1556,6 +1838,7 @@ class IMUCalibApp:
                 self.send_calibration_to_module()
 
     def clear_calibration(self):
+        self.bubble_target_pose = None
         self.pose_results = []
         self.bias = None
         self.scale = None
