@@ -4,6 +4,11 @@ Open-source firmware and PC tools for a wireless multi-IMU system built on ESP32
 
 ## Hardware overview
 
+Schematics 
+<p align="center">
+  <img src="https://github.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/SCH_Sche_1-Sche_2026-07-09.svg" width="50%" alt="Schematics" />
+</p>
+
 Custom carrier PCB with ESP32 module (CAD):
 <p align="center">
   <img src="https://github.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/3D.png" width="50%" alt="ESP32 carrier PCB — 3D render" />
