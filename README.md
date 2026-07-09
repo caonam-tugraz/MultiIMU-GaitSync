@@ -12,7 +12,7 @@ Custom carrier PCB with ESP32 module (CAD):
 Five IMU slave nodes and Master with TFT (5/5 nodes connected):
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/ss.png" width="50%" alt="Five IMU nodes and Master recorder" />
+  <img src="https://github.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/ss.png" width="50%" alt="Five IMU nodes and Master recorder" />
 </p>
 
 ## Programs included
