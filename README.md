@@ -7,13 +7,13 @@ Open-source firmware and PC tools for a wireless multi-IMU system built on ESP32
 Custom carrier PCB with ESP32 module (CAD):
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/3D.png" width="50%" alt="ESP32 carrier PCB — 3D render" />
+  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/3D.png" width="50%" alt="ESP32 carrier PCB — 3D render" />
 </p>
 
 Five IMU slave nodes and Master with TFT (5/5 nodes connected):
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/ss.png" width="50%" alt="Five IMU nodes and Master recorder" />
+  <img src="https://raw.githubusercontent.com/caonam-tugraz/MultiIMU-GaitSync/blob/main/ss.png" width="50%" alt="Five IMU nodes and Master recorder" />
 </p>
 
 ## Programs included
